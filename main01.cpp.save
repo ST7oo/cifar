@@ -10,6 +10,8 @@
 #include <thread>
 #include <chrono>
 
+#define ATD at<double>
+
 using namespace cv;
 using namespace std;
 
@@ -39,7 +41,7 @@ void read_batch(string filename, vector<Mat> &vec, Mat &label){
             }
             merge(channels, fin_img);
             vec.push_back(fin_img);
-            label.at<float>(i, 0) = (float)tplabel;
+            label.ATD(i, 0) = (double)tplabel;
         }
     }
 }
@@ -48,27 +50,15 @@ void concatenateMat(vector<Mat> &vec, Mat &res){
     int height = vec[0].rows;
     int width = vec[0].cols;
     for(int i=0; i<vec.size(); i++){
-        //cout << i << ",";
-        Mat img(height, width, CV_32F);
+        Mat img(height, width, CV_64FC1);
         Mat gray(height, width, CV_8UC1);
         cvtColor(vec[i], gray, CV_RGB2GRAY);
-        gray.convertTo(img, CV_32F);
+        gray.convertTo(img, CV_64FC1);
         Mat ptmat = img.reshape(0, height * width);
-        //Rect roi = cv::Rect(0, i, ptmat.rows, ptmat.cols);
-        //Mat subView = res(roi);
-        //ptmat.copyTo(subView);
-        //ptmat.copyTo(res(roi));
-        for(int j=0; j<ptmat.cols; j++){
-            res.at<float>(j,i) = ptmat.at<float>(j,0);
-            /*if(i<2 && j<2){
-                cout << res.at<float>(i,j) << endl;
-            }*/
-        }
-        /*if (i<2){
-            cout << res.row(i) << endl;
-        }*/
+        Rect roi = cv::Rect(0, i, ptmat.rows, ptmat.cols);
+        Mat subView = res(roi);
+        ptmat.copyTo(subView);
     }
-    //cout << res(Rect(0,0,1024,1)) << endl;
     divide(res, 255.0, res);
 }
 
@@ -88,14 +78,13 @@ void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY)
         } else {
             filename = path + "data_batch_" + to_string(i+1) + ".bin";
         }
-        labels[i] = Mat::zeros(10000, 1, CV_32F);
+        labels[i] = Mat::zeros(10000, 1, CV_64F);
         threads[i] = thread(read_batch, filename, ref(batches[i]), ref(labels[i]));
     }
 
     for(int i = 0; i < num_batches; i++) {
         threads[i].join();
     }
-    //cout << labels[0](Rect(0,0,1,2)) << endl;
 
 
     cout << "Processing\n";
@@ -104,19 +93,14 @@ void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY)
     vector<thread> threads2(num_batches);
 
     for(int i = 0; i < num_batches; i++) {
-        mts[i] = Mat::zeros(batches[i].size(), batches[i][0].rows * batches[i][0].cols, CV_32F);
+        mts[i] = Mat::zeros(batches[i].size(), batches[i][0].rows * batches[i][0].cols, CV_64F);
         threads2[i] = thread(concatenateMat, ref(batches[i]), ref(mts[i]));
     }
 
     for(int i = 0; i < num_batches; i++) {
         threads2[i].join();
     }
-    /*cout << mts[0](Rect(0,0,10,1)) << endl;
-    cout << mts[1](Rect(0,0,10,1)) << endl;
-    cout << mts[2](Rect(0,0,10,1)) << endl;
-    cout << mts[3](Rect(0,0,10,1)) << endl;
-    cout << mts[4](Rect(0,0,10,1)) << endl;
-    cout << mts[5](Rect(0,0,10,1)) << endl;*/
+    cout << mts[0](Rect(0,0,1024,1)) << endl;
 
 
     cout << "Finishing\n";
@@ -141,8 +125,8 @@ float evaluate(cv::Mat& predicted, cv::Mat& actual) {
     int t = 0;
     int f = 0;
     for(int i = 0; i < actual.rows; i++) {
-        float p = predicted.at<float>(i,0);
-        float a = actual.at<float>(i,0);
+        float p = predicted.ATD(i,0);
+        float a = actual.ATD(i,0);
         if(p == a) {
             t++;
         } else {
@@ -150,16 +134,6 @@ float evaluate(cv::Mat& predicted, cv::Mat& actual) {
         }
     }
     return (t * 1.0) / (t + f);
-}
-
-string elapsed_time(std::chrono::steady_clock::time_point start_time, std::chrono::steady_clock::time_point end_time) {
-    float elapsed = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
-    if (elapsed > 60) {
-        elapsed /= 60;
-        return to_string(elapsed) + " min";
-    } else {
-        return to_string(elapsed) + " sec";
-    }
 }
 
 int main()
@@ -173,17 +147,15 @@ int main()
     testY = Mat::zeros(10000, 1, CV_32F);
     std::chrono::steady_clock::time_point start_time;
     std::chrono::steady_clock::time_point end_time;
-    //float elapsed_time;
+    float elapsed_time;
 
     cout << "\nStart reading:\n";
     start_time = std::chrono::steady_clock::now();
     string path_data = "../cifar-10-batches-bin/";
     read_CIFAR10(path_data, trainX, testX, trainY, testY);
     end_time = std::chrono::steady_clock::now();
-    //elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
-    cout << "Reading completed in " << elapsed_time(start_time, end_time) << endl;
-    //cout << trainX(Rect(0,0,10,3)) << endl;
-    //cout << trainY(Rect(0,0,1,2)) << endl;
+    elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
+    printf("Reading completed in %f seconds.\n", elapsed_time);
 
     cout << "\nStart training:\n";
     start_time = std::chrono::steady_clock::now();
@@ -207,23 +179,23 @@ int main()
     Ptr<ml::KNearest> knn = ml::KNearest::create();
     knn->setIsClassifier(true);
     knn->setAlgorithmType(ml::KNearest::BRUTE_FORCE);  //BRUTE_FORCE KD_TREE COMPRESSED
+    //knn->setDefaultK(3);
     //training data
-    /*Mat trainX2, trainY2;
+    Mat trainX2, trainY2;
     trainX.convertTo(trainX2,CV_32F);
-    trainY.convertTo(trainY2,CV_32F);*/
+    trainY.convertTo(trainY2,CV_32F);
     //cout << trainX2(Rect(0,0,1024,2)) << endl;
-    //cout << trainY2(Rect(0,0,1,5)) << endl;
-    knn->train(trainX, ml::ROW_SAMPLE, trainY);
+    //cout << trainY2(Rect(0,0,1,2)) << endl;
+    knn->train(trainX2, ml::ROW_SAMPLE, trainY2);
 
     end_time = std::chrono::steady_clock::now();
-    //elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
-    cout << "Training completed in " << elapsed_time(start_time, end_time) << endl;
+    elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
+    printf("Training completed in %f seconds.\n", elapsed_time);
 
 
     cout << "\nStart predicting:\n";
     start_time = std::chrono::steady_clock::now();
 
-    // MLP
     /*cv::Mat response(1, 1, CV_32FC1);
     cv::Mat predicted(testY.rows, 1, CV_32F);
     for(int i = 0; i < testX.rows; i++) {
@@ -242,21 +214,22 @@ int main()
     //nn->predict(testX, predicted);
 
     // KNN
-	Mat predicted(testY.rows, 1, CV_32F);
-	knn->findNearest(testX, 7, predicted);
-    /*Mat testX2, testY2;
+	//Mat predicted(testY.rows, 1, CV_32F);
+	//knn->findNearest(testX, knn->getDefaultK(), predicted);
+    Mat testX2, testY2;
     testX.convertTo(testX2,CV_32F);
-    testY.convertTo(testY2,CV_32F);*/
-    //cout << testX2(Rect(0,0,8,2)) << endl;
-    //cout << testY2(Rect(0,0,1,5)) << endl;
-	/*for (int i=0; i<10; i++)
+    testY.convertTo(testY2,CV_32F);
+    //cout << testX2(Rect(0,0,1024,2)) << endl;
+    //cout << testY2(Rect(0,0,1,2)) << endl;
+	for (int i=0; i<2; i++)
     {
         Mat res;
-        knn->findNearest(testX.row(i), 5, noArray(), res);
-        float e = testY.at<float>(i);
+        // predict on majority of k(5) neighbours:
+        knn->findNearest(testX2.row(i), 5, noArray(), res);
+        float e = testY2.at<float>(i);
         float p = res.at<float>(0);
         cerr << e << " : " << p << endl;
-    }*/
+    }
 
     /*int c = 0;
     for(int i=0; i<predicted.rows; i++){
@@ -268,11 +241,11 @@ int main()
     }
     cout << c << endl;*/
 
-	cout << "Accuracy = " << evaluate(predicted, testY) << endl;
+	//cout << "Accuracy = " << evaluate(predicted, testY) << endl;
 
     end_time = std::chrono::steady_clock::now();
-    //elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
-    cout << "Predicting completed in " << elapsed_time(start_time, end_time) << endl;
+    elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
+    printf("Predicting completed in %f seconds.\n", elapsed_time);
 
     waitKey();
     return 0;
