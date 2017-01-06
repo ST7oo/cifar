@@ -153,9 +153,9 @@ float evaluate(cv::Mat& predicted, cv::Mat& actual) {
     int t = 0;
     int f = 0;
     for(int i = 0; i < actual.rows; i++) {
-        float p = predicted.at<float>(i,0);
-        float a = actual.at<float>(i,0);
-        if((p >= 0.0 && a >= 0.0) || (p <= 0.0 &&  a <= 0.0)) {
+        float p = predicted.ATD(i,0);
+        float a = actual.ATD(i,0);
+        if(p == a) {
             t++;
         } else {
             f++;
@@ -195,9 +195,10 @@ int main()
     nn->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, (int)100000, 1e-6));
 
     //setting the NN layer size
-    Mat layers = Mat(2, 1, CV_32SC1);
+    Mat layers = Mat(3, 1, CV_32SC1);
     layers.row(0) = Scalar(1024);
-    layers.row(1) = Scalar(1);
+    layers.row(1) = Scalar(8);
+    layers.row(2) = Scalar(1);
     nn->setLayerSizes(layers);
     nn->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM);
 
@@ -208,9 +209,30 @@ int main()
 
     cout << "\nStart predicting:\n";
     start_time = std::chrono::steady_clock::now();
-    Mat predicted(testY.rows, 1, CV_32F);
-    nn->predict(testX, predicted);
+    cv::Mat response(1, 1, CV_32FC1);
+    cv::Mat predicted(testY.rows, 1, CV_32F);
+    for(int i = 0; i < testX.rows; i++) {
+        cv::Mat response(1, 1, CV_32FC1);
+        cv::Mat sample = testX.row(i);
+        nn->predict(sample, response);
+        if(i<2){
+            for(int j=0; j<10; j++){
+                printf("%f,",sample.ATD(j,0));
+            }
+            cout << response << endl;
+        }
+        predicted.at<float>(i,0) = response.at<float>(0,0);
 
+    }
+    //Mat predicted(testY.rows, 1, CV_32F);
+    //nn->predict(testX, predicted);
+    int c = 0;
+    for(int i=0; i<predicted.rows; i++){
+        if(predicted.ATD(i,0) == 0.0){
+            c++;
+        }
+    }
+    cout << c << endl;
 	cout << "Accuracy_{MLP} = " << evaluate(predicted, testY) << endl;
     end_time = std::chrono::steady_clock::now();
     elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
