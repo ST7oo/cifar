@@ -13,6 +13,9 @@
 using namespace cv;
 using namespace std;
 
+// Functions
+float evaluate(cv::Mat& predicted, cv::Mat& actual);
+
 void read_batch(string filename, vector<Mat> &vec, Mat &label){
     ifstream file (filename.c_str(), ios::binary);
     if (file.is_open())
@@ -44,14 +47,18 @@ void read_batch(string filename, vector<Mat> &vec, Mat &label){
     }
 }
 
-void preprocess(vector<Mat> &vec, Mat &res){
-    int height = vec[0].rows;
-    int width = vec[0].cols;
+void preprocess(vector<Mat> &vec, Mat &res, float factor = 1){
+    int height = vec[0].rows * factor;
+    int width = vec[0].cols * factor;
     for(int i=0; i<vec.size(); i++){
         Mat img(height, width, CV_32F);
         Mat gray(height, width, CV_8UC1);
         cvtColor(vec[i], gray, CV_RGB2GRAY);
         gray.convertTo(img, CV_32F);
+        resize(img,img,Size(),factor,factor);//resize image
+        if (i==0){
+        cout << img.cols << "," << img.rows << endl;
+        }
         Mat ptmat = img.reshape(0, height * width);
         //Rect roi = cv::Rect(0, i, ptmat.rows, ptmat.cols);
         //Mat subView = res(roi);
@@ -61,7 +68,7 @@ void preprocess(vector<Mat> &vec, Mat &res){
             res.at<float>(j,i) = ptmat.at<float>(j,0);
         }
     }
-//    divide(res, 255.0, res);
+    divide(res, 255.0, res);
 }
 
 // reads data and stores in trainX, trainY, testX, testY
@@ -95,12 +102,15 @@ void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY)
     cout << "Processing\n";
 
     for(int i = 0; i < num_batches; i++) {
-        mts[i] = Mat::zeros(batches[i].size(), batches[i][0].rows * batches[i][0].cols, CV_32F);
-        threads2[i] = thread(preprocess, ref(batches[i]), ref(mts[i]));
+        mts[i] = Mat::zeros(batches[i].size(), (batches[i][0].rows * batches[i][0].cols) / 4, CV_32F);
+        threads2[i] = thread(preprocess, ref(batches[i]), ref(mts[i]), 0.5);
     }
     for(int i = 0; i < num_batches; i++) {
         threads2[i].join();
     }
+//    mts[0] = Mat::zeros(batches[0].size(), (batches[0][0].rows * batches[0][0].cols) / 4, CV_32F);
+//    preprocess(ref(batches[0]), ref(mts[0]), 0.5);
+//    cout << mts[0](Rect(0,0,256,2)) << endl;
 
 
     cout << "Finishing\n";
@@ -115,6 +125,63 @@ void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY)
     }
     mts[num_batches-1].copyTo(testX);
     labels[num_batches-1].copyTo(testY);
+}
+
+Ptr<ml::ANN_MLP> trainANN(Mat X, Mat Y) {
+    Ptr<ml::ANN_MLP> nn = ml::ANN_MLP::create();
+    nn->setTrainMethod(ml::ANN_MLP::BACKPROP);
+    nn->setBackpropMomentumScale(0.1);
+    nn->setBackpropWeightScale(0.1);
+    nn->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, (int)100, 1e-6));
+
+//    CvTermCriteria criteria;
+//    criteria.max_iter = 100;
+//    criteria.epsilon = 0.00001f;
+//    criteria.type = CV_TERMCRIT_ITER | CV_TERMCRIT_EPS;
+//    nn->setTermCriteria(criteria);
+
+    Mat layers = Mat(2, 1, CV_32SC1);
+    layers.row(0) = Scalar(1024);
+    layers.row(1) = Scalar(1);
+    nn->setLayerSizes(layers);
+    nn->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM);
+    nn->train(X, ml::ROW_SAMPLE, Y);
+
+    return nn;
+}
+
+/*void trainKNN(Mat X, Mat Y) {
+    Ptr<ml::KNearest> knn = ml::KNearest::create();
+    knn->setIsClassifier(true);
+    knn->setAlgorithmType(ml::KNearest::BRUTE_FORCE);  //BRUTE_FORCE KD_TREE COMPRESSED
+    knn->train(X, ml::ROW_SAMPLE, Y);
+}*/
+
+Ptr<ml::SVM> trainSVM(Mat X, Mat Y) {
+//    Ptr<ml::SVM> svm = ml::StatModel::load<ml::SVM>("svm.yml");
+    Y.convertTo(Y,CV_32S);
+    Ptr<ml::SVM> svm = ml::SVM::create();
+//    svm->setType(ml::SVM::C_SVC);
+//    svm->setKernel(ml::SVM::RBF);
+//    svm->setGamma(10);
+//    svm->setC(15);
+//    svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 100, 1e-6));
+    svm->train(X, ml::ROW_SAMPLE, Y);
+//    svm->save("svm.yml");
+    return svm;
+}
+
+void predictSVM(Ptr<ml::SVM> model, Mat X, Mat Y) {
+    for(int i = 0; i < 15; i++) {
+        Mat res;
+        Mat sample = X.row(i);
+        model->predict(sample, res);
+        cout << Y.at<float>(i) << " : " << res.at<float>(0) << endl;
+    }
+
+    Mat predicted(Y.rows, 1, CV_32F);
+    model->predict(X, predicted);
+    cout << "Accuracy = " << evaluate(predicted, Y) << endl;
 }
 
 // evaluates the prediction
@@ -149,16 +216,17 @@ int main()
 {
     cout << "CIFAR10\n\n";
 
-    // variables
+    // Variables
     std::chrono::steady_clock::time_point start_time;
     std::chrono::steady_clock::time_point end_time;
-    Mat trainX = Mat::zeros(50000, 1024, CV_32F);
-    Mat testX = Mat::zeros(10000, 1024, CV_32F);
+    Mat trainX = Mat::zeros(50000, 256, CV_32F);
+    Mat testX = Mat::zeros(10000, 256, CV_32F);
     Mat trainY = Mat::zeros(50000, 1, CV_32F);
     Mat testY = Mat::zeros(10000, 1, CV_32F);
     string path_data = "../cifar-10-batches-bin/";
 
 
+    // Reading
     cout << "\nStart reading:\n";
 
     start_time = std::chrono::steady_clock::now();
@@ -168,83 +236,27 @@ int main()
     cout << "Reading completed in " << elapsed_time(start_time, end_time) << endl;
 
 
+    // Training
     cout << "\nStart training:\n";
 
     start_time = std::chrono::steady_clock::now();
-    // ANN
-//    Ptr<ml::ANN_MLP> nn = ml::ANN_MLP::create();
-//    nn->setTrainMethod(ml::ANN_MLP::BACKPROP);
-//    nn->setBackpropMomentumScale(0.1);
-//    nn->setBackpropWeightScale(0.1);
-//    nn->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, (int)100, 1e-6));
 
-//    CvTermCriteria criteria;
-//    criteria.max_iter = 100;
-//    criteria.epsilon = 0.00001f;
-//    criteria.type = CV_TERMCRIT_ITER | CV_TERMCRIT_EPS;
-//    nn->setTermCriteria(criteria);
-
-//    Mat layers = Mat(2, 1, CV_32SC1);
-//    layers.row(0) = Scalar(1024);
-//    layers.row(1) = Scalar(1);
-//    nn->setLayerSizes(layers);
-//    nn->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM);
-//    nn->train(trainX, ml::ROW_SAMPLE, trainY);
-
-    // KNN
-    /*Ptr<ml::KNearest> knn = ml::KNearest::create();
-    knn->setIsClassifier(true);
-    knn->setAlgorithmType(ml::KNearest::BRUTE_FORCE);  //BRUTE_FORCE KD_TREE COMPRESSED
-    knn->train(trainX, ml::ROW_SAMPLE, trainY);*/
-
-    // SVM
-//    cout << trainX(Rect(0,0,1024,10)) << endl;
-//    Ptr<ml::SVM> svm = ml::StatModel::load<ml::SVM>("svm.dat");
-    Mat trainY2;
-    trainY.convertTo(trainY2,CV_32S);
-    Ptr<ml::SVM> svm = ml::SVM::create();
-    svm->setType(ml::SVM::C_SVC);
-    svm->setKernel(ml::SVM::RBF);
-    svm->setGamma(10);
-    svm->setC(15);
-    svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 1000, 1e-6));
-    svm->train(trainX, ml::ROW_SAMPLE, trainY2);
-    svm->save("svm.dat");
+//    ann = trainANN(trainX, trainY);
+    Ptr<ml::SVM> svm = trainSVM(trainX, trainY);
 
     end_time = std::chrono::steady_clock::now();
 
     cout << "Training completed in " << elapsed_time(start_time, end_time) << endl;
 
 
+    // Predicting
     cout << "\nStart predicting:\n";
 
     start_time = std::chrono::steady_clock::now();
 
-    // ANN
-    //Mat predicted(testY.rows, 1, CV_32F);
-    /*for(int i = 0; i < 10; i++) {
-        Mat res;
-        Mat sample = testX.row(i);
-        nn->predict(sample, res);
-        cout << testY.at<float>(i) << " : " << res.at<float>(0) << endl;
-        //predicted.at<float>(i,0) = response.at<float>(0,0);
-    }*/
-    //Mat predicted(testY.rows, 1, CV_32F);
-    //nn->predict(testX, predicted);
-
-    // SVM
-    for(int i = 0; i < 15; i++) {
-        Mat res;
-        Mat sample = testX.row(i);
-        svm->predict(sample, res);
-        cout << res << endl;
-        cout << testY.at<float>(i) << " : " << res.at<float>(0) << endl;
-    }
-    Mat predicted(testY.rows, 1, CV_32F);
-    svm->predict(testX, predicted);
-
+    predictSVM(svm, testX, testY);
     // KNN
-	//Mat predicted(testY.rows, 1, CV_32F);
+	/*//Mat predicted(testY.rows, 1, CV_32F);
 	//knn->findNearest(testX, 7, predicted);
 	/*for (int i=0; i<10; i++)
     {
@@ -255,17 +267,6 @@ int main()
         cerr << e << " : " << p << endl;
     }*/
 
-    /*int c = 0;
-    for(int i=0; i<predicted.rows; i++){
-        if(predicted.ATD(i,0) == 0.0){
-            c++;
-        } else {
-            //printf("non-zero: %f\n", predicted.ATD(i,0));
-        }
-    }
-    cout << c << endl;*/
-
-	cout << "Accuracy = " << evaluate(predicted, testY) << endl;
 
     end_time = std::chrono::steady_clock::now();
 
