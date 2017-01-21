@@ -44,11 +44,10 @@ void read_batch(string filename, vector<Mat> &vec, Mat &label){
     }
 }
 
-void concatenateMat(vector<Mat> &vec, Mat &res){
+void preprocess(vector<Mat> &vec, Mat &res){
     int height = vec[0].rows;
     int width = vec[0].cols;
     for(int i=0; i<vec.size(); i++){
-        //cout << i << ",";
         Mat img(height, width, CV_32F);
         Mat gray(height, width, CV_8UC1);
         cvtColor(vec[i], gray, CV_RGB2GRAY);
@@ -60,27 +59,24 @@ void concatenateMat(vector<Mat> &vec, Mat &res){
         //ptmat.copyTo(res(roi));
         for(int j=0; j<ptmat.cols; j++){
             res.at<float>(j,i) = ptmat.at<float>(j,0);
-            /*if(i<2 && j<2){
-                cout << res.at<float>(i,j) << endl;
-            }*/
         }
-        /*if (i<2){
-            cout << res.row(i) << endl;
-        }*/
     }
-    //cout << res(Rect(0,0,1024,1)) << endl;
-    divide(res, 255.0, res);
+//    divide(res, 255.0, res);
 }
 
+// reads data and stores in trainX, trainY, testX, testY
 void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY){
 
-    cout << "Reading batches\n";
-
+    // variables
     int num_batches = 6;
     vector< vector<Mat> > batches(num_batches, vector<Mat>());
     vector<Mat> labels(num_batches);
     vector<thread> threads(num_batches);
+    vector<Mat> mts(num_batches);
+    vector<thread> threads2(num_batches);
     string filename;
+
+    cout << "Reading batches\n";
 
     for(int i = 0; i < num_batches; i++) {
         if (i == 5) {
@@ -91,32 +87,20 @@ void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY)
         labels[i] = Mat::zeros(10000, 1, CV_32F);
         threads[i] = thread(read_batch, filename, ref(batches[i]), ref(labels[i]));
     }
-
     for(int i = 0; i < num_batches; i++) {
         threads[i].join();
     }
-    //cout << labels[0](Rect(0,0,1,2)) << endl;
 
 
     cout << "Processing\n";
 
-    vector<Mat> mts(num_batches);
-    vector<thread> threads2(num_batches);
-
     for(int i = 0; i < num_batches; i++) {
         mts[i] = Mat::zeros(batches[i].size(), batches[i][0].rows * batches[i][0].cols, CV_32F);
-        threads2[i] = thread(concatenateMat, ref(batches[i]), ref(mts[i]));
+        threads2[i] = thread(preprocess, ref(batches[i]), ref(mts[i]));
     }
-
     for(int i = 0; i < num_batches; i++) {
         threads2[i].join();
     }
-    /*cout << mts[0](Rect(0,0,10,1)) << endl;
-    cout << mts[1](Rect(0,0,10,1)) << endl;
-    cout << mts[2](Rect(0,0,10,1)) << endl;
-    cout << mts[3](Rect(0,0,10,1)) << endl;
-    cout << mts[4](Rect(0,0,10,1)) << endl;
-    cout << mts[5](Rect(0,0,10,1)) << endl;*/
 
 
     cout << "Finishing\n";
@@ -129,13 +113,11 @@ void read_CIFAR10(string path, Mat &trainX, Mat &testX, Mat &trainY, Mat &testY)
         subView = trainY(roi);
         labels[i].copyTo(subView);
     }
-
     mts[num_batches-1].copyTo(testX);
     labels[num_batches-1].copyTo(testY);
-    //cout << mts[num_batches-1](Rect(0,0,1024,2)) << endl;
-    //cout << labels[num_batches-1](Rect(0,0,1,2)) << endl;
 }
 
+// evaluates the prediction
 float evaluate(cv::Mat& predicted, cv::Mat& actual) {
     assert(predicted.rows == actual.rows);
     int t = 0;
@@ -152,6 +134,7 @@ float evaluate(cv::Mat& predicted, cv::Mat& actual) {
     return (t * 1.0) / (t + f);
 }
 
+// calculates the elapsed time
 string elapsed_time(std::chrono::steady_clock::time_point start_time, std::chrono::steady_clock::time_point end_time) {
     float elapsed = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
     if (elapsed > 60) {
@@ -165,90 +148,104 @@ string elapsed_time(std::chrono::steady_clock::time_point start_time, std::chron
 int main()
 {
     cout << "CIFAR10\n\n";
-    Mat trainX, testX;
-    Mat trainY, testY;
-    trainX = Mat::zeros(50000, 1024, CV_32F);
-    testX = Mat::zeros(10000, 1024, CV_32F);
-    trainY = Mat::zeros(50000, 1, CV_32F);
-    testY = Mat::zeros(10000, 1, CV_32F);
+
+    // variables
     std::chrono::steady_clock::time_point start_time;
     std::chrono::steady_clock::time_point end_time;
-    //float elapsed_time;
+    Mat trainX = Mat::zeros(50000, 1024, CV_32F);
+    Mat testX = Mat::zeros(10000, 1024, CV_32F);
+    Mat trainY = Mat::zeros(50000, 1, CV_32F);
+    Mat testY = Mat::zeros(10000, 1, CV_32F);
+    string path_data = "../cifar-10-batches-bin/";
+
 
     cout << "\nStart reading:\n";
+
     start_time = std::chrono::steady_clock::now();
-    string path_data = "../cifar-10-batches-bin/";
     read_CIFAR10(path_data, trainX, testX, trainY, testY);
     end_time = std::chrono::steady_clock::now();
-    //elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
+
     cout << "Reading completed in " << elapsed_time(start_time, end_time) << endl;
-    //cout << trainX(Rect(0,0,10,3)) << endl;
-    //cout << trainY(Rect(0,0,1,2)) << endl;
+
 
     cout << "\nStart training:\n";
+
     start_time = std::chrono::steady_clock::now();
     // ANN
-    /*Ptr<ml::ANN_MLP> nn = ml::ANN_MLP::create();
-    nn->setTrainMethod(ml::ANN_MLP::BACKPROP);
-    nn->setBackpropMomentumScale(0.1);
-    nn->setBackpropWeightScale(0.1);
-    nn->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, (int)100000, 1e-6));
-    //setting the NN layer size
-    Mat layers = Mat(2, 1, CV_32SC1);
-    layers.row(0) = Scalar(1024);
-    layers.row(1) = Scalar(1);
-    nn->setLayerSizes(layers);
-    nn->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM);
-    Mat trainY2;
-    trainY.convertTo(trainY2,CV_32FC1);
-    nn->train(trainX, ml::ROW_SAMPLE, trainY2);*/
+//    Ptr<ml::ANN_MLP> nn = ml::ANN_MLP::create();
+//    nn->setTrainMethod(ml::ANN_MLP::BACKPROP);
+//    nn->setBackpropMomentumScale(0.1);
+//    nn->setBackpropWeightScale(0.1);
+//    nn->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, (int)100, 1e-6));
+
+//    CvTermCriteria criteria;
+//    criteria.max_iter = 100;
+//    criteria.epsilon = 0.00001f;
+//    criteria.type = CV_TERMCRIT_ITER | CV_TERMCRIT_EPS;
+//    nn->setTermCriteria(criteria);
+
+//    Mat layers = Mat(2, 1, CV_32SC1);
+//    layers.row(0) = Scalar(1024);
+//    layers.row(1) = Scalar(1);
+//    nn->setLayerSizes(layers);
+//    nn->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM);
+//    nn->train(trainX, ml::ROW_SAMPLE, trainY);
 
     // KNN
-    Ptr<ml::KNearest> knn = ml::KNearest::create();
+    /*Ptr<ml::KNearest> knn = ml::KNearest::create();
     knn->setIsClassifier(true);
     knn->setAlgorithmType(ml::KNearest::BRUTE_FORCE);  //BRUTE_FORCE KD_TREE COMPRESSED
-    //training data
-    /*Mat trainX2, trainY2;
-    trainX.convertTo(trainX2,CV_32F);
-    trainY.convertTo(trainY2,CV_32F);*/
-    //cout << trainX2(Rect(0,0,1024,2)) << endl;
-    //cout << trainY2(Rect(0,0,1,5)) << endl;
-    knn->train(trainX, ml::ROW_SAMPLE, trainY);
+    knn->train(trainX, ml::ROW_SAMPLE, trainY);*/
+
+    // SVM
+//    cout << trainX(Rect(0,0,1024,10)) << endl;
+//    Ptr<ml::SVM> svm = ml::StatModel::load<ml::SVM>("svm.dat");
+    Mat trainY2;
+    trainY.convertTo(trainY2,CV_32S);
+    Ptr<ml::SVM> svm = ml::SVM::create();
+    svm->setType(ml::SVM::C_SVC);
+    svm->setKernel(ml::SVM::RBF);
+    svm->setGamma(10);
+    svm->setC(15);
+    svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 1000, 1e-6));
+    svm->train(trainX, ml::ROW_SAMPLE, trainY2);
+    svm->save("svm.dat");
 
     end_time = std::chrono::steady_clock::now();
-    //elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
+
     cout << "Training completed in " << elapsed_time(start_time, end_time) << endl;
 
 
     cout << "\nStart predicting:\n";
+
     start_time = std::chrono::steady_clock::now();
 
-    // MLP
-    /*cv::Mat response(1, 1, CV_32FC1);
-    cv::Mat predicted(testY.rows, 1, CV_32F);
-    for(int i = 0; i < testX.rows; i++) {
-        cv::Mat response(1, 1, CV_32FC1);
-        cv::Mat sample = testX.row(i);
-        nn->predict(sample, response);
-        if(i<2){
-            for(int j=0; j<10; j++){
-                printf("%f,",sample.at<float>(0,j));
-            }
-            cout << response << endl;
-        }
-        predicted.at<float>(i,0) = response.at<float>(0,0);
+    // ANN
+    //Mat predicted(testY.rows, 1, CV_32F);
+    /*for(int i = 0; i < 10; i++) {
+        Mat res;
+        Mat sample = testX.row(i);
+        nn->predict(sample, res);
+        cout << testY.at<float>(i) << " : " << res.at<float>(0) << endl;
+        //predicted.at<float>(i,0) = response.at<float>(0,0);
     }*/
     //Mat predicted(testY.rows, 1, CV_32F);
     //nn->predict(testX, predicted);
 
+    // SVM
+    for(int i = 0; i < 15; i++) {
+        Mat res;
+        Mat sample = testX.row(i);
+        svm->predict(sample, res);
+        cout << res << endl;
+        cout << testY.at<float>(i) << " : " << res.at<float>(0) << endl;
+    }
+    Mat predicted(testY.rows, 1, CV_32F);
+    svm->predict(testX, predicted);
+
     // KNN
-	Mat predicted(testY.rows, 1, CV_32F);
-	knn->findNearest(testX, 7, predicted);
-    /*Mat testX2, testY2;
-    testX.convertTo(testX2,CV_32F);
-    testY.convertTo(testY2,CV_32F);*/
-    //cout << testX2(Rect(0,0,8,2)) << endl;
-    //cout << testY2(Rect(0,0,1,5)) << endl;
+	//Mat predicted(testY.rows, 1, CV_32F);
+	//knn->findNearest(testX, 7, predicted);
 	/*for (int i=0; i<10; i++)
     {
         Mat res;
@@ -271,53 +268,10 @@ int main()
 	cout << "Accuracy = " << evaluate(predicted, testY) << endl;
 
     end_time = std::chrono::steady_clock::now();
-    //elapsed_time = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()) / 1000000.0;
+
     cout << "Predicting completed in " << elapsed_time(start_time, end_time) << endl;
+
 
     waitKey();
     return 0;
 }
-
-
-
-//#include <iostream>
-//#include <opencv2/core/core.hpp>
-//#include <opencv2/highgui/highgui.hpp>
-
-//using namespace cv; // all the new OpenCV API is put into "cv" namespace. Export its content
-//using namespace std;
-
-/*
-void help()
-{
-	cout <<
-	"\nThis program shows how to use OpenCV.\n"
-	"It shows reading of image and visualize it on the screen\n"
-	"Call:\n"
-	"./helloWorld [image-name Default: lena.jpg]\n" << endl;
-}
-
-
-int main( int argc, char** argv )
-{
-	help();
-    const char* imagename = argc > 1 ? argv[1] : "lena.jpg";
-
-    Mat img = imread(imagename); // this function is in accordance MATLAB-style function
-    if(img.empty())
-    {
-        fcout << stderr, "Can not load image %s\n", imagename);
-        return -1;
-    }
-    if( !img.data ) // check if the image has been loaded properly
-        return -1;
-
-    string str ="image loaded: ";
-    str += imagename;
-    imshow(str, img); //function to show an image
-
-    waitKey(); //waiting until the user press a key
-    return 0;
-    // all the memory will automatically be released!!
-}
-*/
