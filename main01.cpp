@@ -14,7 +14,7 @@ using namespace cv;
 using namespace std;
 
 // Functions
-float evaluate(cv::Mat& predicted, cv::Mat& actual);
+/*float evaluate(cv::Mat& predicted, cv::Mat& actual);
 
 void read_batch(string filename, vector<Mat> &vec, Mat &label){
     ifstream file (filename.c_str(), ios::binary);
@@ -57,7 +57,7 @@ void preprocess(vector<Mat> &vec, Mat &res, float factor = 1){
         gray.convertTo(img, CV_32F);
         resize(img,img,Size(),factor,factor);//resize image
         if (i==0){
-        cout << img.cols << "," << img.rows << endl;
+            cout << img.cols << "," << img.rows << endl;
         }
         Mat ptmat = img.reshape(0, height * width);
         //Rect roi = cv::Rect(0, i, ptmat.rows, ptmat.cols);
@@ -157,7 +157,7 @@ Ptr<ml::ANN_MLP> trainANN(Mat X, Mat Y) {
     knn->train(X, ml::ROW_SAMPLE, Y);
 }*/
 
-Ptr<ml::SVM> trainSVM(Mat X, Mat Y) {
+/*Ptr<ml::SVM> trainSVM(Mat X, Mat Y) {
 //    Ptr<ml::SVM> svm = ml::StatModel::load<ml::SVM>("svm.yml");
     Y.convertTo(Y,CV_32S);
     Ptr<ml::SVM> svm = ml::SVM::create();
@@ -212,7 +212,7 @@ string elapsed_time(std::chrono::steady_clock::time_point start_time, std::chron
     }
 }
 
-int main()
+int main2()
 {
     cout << "CIFAR10\n\n";
 
@@ -256,7 +256,7 @@ int main()
 
     predictSVM(svm, testX, testY);
     // KNN
-	/*//Mat predicted(testY.rows, 1, CV_32F);
+	/*Mat predicted(testY.rows, 1, CV_32F);
 	//knn->findNearest(testX, 7, predicted);
 	/*for (int i=0; i<10; i++)
     {
@@ -268,11 +268,11 @@ int main()
     }*/
 
 
-    end_time = std::chrono::steady_clock::now();
+    /*end_time = std::chrono::steady_clock::now();
 
     cout << "Predicting completed in " << elapsed_time(start_time, end_time) << endl;
 
 
     waitKey();
     return 0;
-}
+}*/

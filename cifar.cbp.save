@@ -24,6 +24,7 @@ It is based on OpenCv revison 4873]]>
 					<Add option="-pipe" />
 					<Add option="-mthreads" />
 					<Add directory="C:/lib/opencv/build/include/" />
+					<Add directory="C:/lib/opencv/opencv_contrib-master/modules/xfeatures2d/include" />
 				</Compiler>
 				<Linker>
 					<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_core$(#cvversion).dll" />
@@ -55,8 +56,12 @@ It is based on OpenCv revison 4873]]>
 			<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_highgui$(#cvversion).dll" />
 			<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_imgproc$(#cvversion).dll" />
 			<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_imgcodecs$(#cvversion).dll" />
+			<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_features2d$(#cvversion).dll" />
+			<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_xfeatures2d$(#cvversion).dll" />
+			<Add library="C:\lib\opencv\build\mingw$(#winversion)\bin\libopencv_flann$(#cvversion).dll" />
 		</Linker>
 		<Unit filename="main01.cpp" />
+		<Unit filename="main03.cpp" />
 		<Extensions>
 			<code_completion />
 			<envvars />
